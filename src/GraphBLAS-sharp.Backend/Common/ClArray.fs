@@ -728,11 +728,11 @@ module ClArray =
         bound<'a, int> Search.Bin.lowerBound clContext
 
     /// <summary>
-    /// Gets the value at the specified position from the input array.
+    /// Gets the value at the specified position from the input array and insert it into given ClCell.
     /// </summary>
     /// <param name="clContext">OpenCL context.</param>
     /// <param name="workGroupSize">Should be a power of 2 and greater than 1.</param>
-    let item<'a> (clContext: ClContext) workGroupSize =
+    let itemTo<'a> (clContext: ClContext) workGroupSize =
 
         let kernel =
             <@ fun (ndRange: Range1D) index (array: ClArray<'a>) (result: ClCell<'a>) ->
@@ -744,6 +744,27 @@ module ClArray =
 
         let program = clContext.Compile kernel
 
+        fun (processor: MailboxProcessor<_>) (index: int) (array: ClArray<'a>) (output: ClCell<'a>) ->
+
+            if index < 0 || index >= array.Length then
+                failwith "Index out of range"
+
+            let kernel = program.GetKernel()
+
+            let ndRange = Range1D.CreateValid(1, workGroupSize)
+
+            processor.Post(Msg.MsgSetArguments(fun () -> kernel.KernelFunc ndRange index array output))
+            processor.Post(Msg.CreateRunMsg<_, _> kernel)
+
+    /// <summary>
+    /// Gets the value at the specified position from the input array.
+    /// </summary>
+    /// <param name="clContext">OpenCL context.</param>
+    /// <param name="workGroupSize">Should be a power of 2 and greater than 1.</param>
+    let item<'a> (clContext: ClContext) workGroupSize =
+
+        let itemTo = itemTo clContext workGroupSize
+
         fun (processor: MailboxProcessor<_>) (index: int) (array: ClArray<'a>) ->
 
             if index < 0 || index >= array.Length then
@@ -752,12 +773,7 @@ module ClArray =
             let result =
                 clContext.CreateClCell Unchecked.defaultof<'a>
 
-            let kernel = program.GetKernel()
-
-            let ndRange = Range1D.CreateValid(1, workGroupSize)
-
-            processor.Post(Msg.MsgSetArguments(fun () -> kernel.KernelFunc ndRange index array result))
-            processor.Post(Msg.CreateRunMsg<_, _> kernel)
+            itemTo processor index array result
 
             result
 

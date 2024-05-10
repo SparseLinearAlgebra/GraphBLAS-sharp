@@ -23,6 +23,7 @@
     <Compile Include="Matrix/SpGeMM/Expand.fs" />
     <Compile Include="Matrix/Map2/Map2.fs" />
     <Compile Include="Matrix/Map2/MathNET.fs" />
+    <Compile Include="Matrix/Kronecker.fs" />
     <Compile Include="Vector/Map2.fs" />
     <Compile Include="Algorithms/BFS.fs" />
     <Compile Include="Algorithms/PageRank.fs" />  
