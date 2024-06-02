@@ -290,3 +290,218 @@ module SpMSpV =
                       Indices = resultIndices
                       Values = create queue DeviceOnly resultIndices.Length true
                       Size = matrix.ColumnCount })
+
+    module Masked =
+
+        let private count (clContext: ClContext) workGroupSize =
+
+            let count =
+                <@ fun (ndRange: Range1D) vectorLength (vectorIndices: ClArray<int>) (vectorMask: ClArray<'d option>) (matrixRowPointers: ClArray<int>) (matrixColumns: ClArray<int>) (result: ClCell<int>) ->
+                    let gid = ndRange.GlobalID0
+                    let step = ndRange.GlobalWorkSize
+
+                    let mutable idx = gid
+
+                    while idx < vectorLength do
+                        let vectorIndex = vectorIndices.[idx]
+
+                        let rowStart = matrixRowPointers.[vectorIndex]
+                        let rowEnd = matrixRowPointers.[vectorIndex + 1]
+
+                        let mutable count = 0
+
+                        for i in rowStart .. rowEnd - 1 do
+                            match vectorMask.[matrixColumns.[i]] with
+                            | None -> count <- count + 1
+                            | Some _ -> ()
+
+                        atomic (+) result.Value count |> ignore
+
+                        idx <- idx + step @>
+
+            let count = clContext.Compile count
+
+            fun (queue: RawCommandQueue) (matrix: ClMatrix.CSR<'a>) (vector: ClVector.Sparse<'b>) (vectorMask: ClArray<'d option>) ->
+
+                let length = vector.NNZ
+
+                let numberOfGroups =
+                    Utils.divUpClamp length workGroupSize 1 1024
+
+                let result = clContext.CreateClCell(0)
+
+                let ndRange =
+                    Range1D.CreateValid(numberOfGroups * workGroupSize, workGroupSize)
+
+                let count = count.GetKernel()
+
+                count.KernelFunc ndRange length vector.Indices vectorMask matrix.RowPointers matrix.Columns result
+
+                queue.RunKernel count
+
+                result.ToHostAndFree queue
+
+        let private multiplyValues
+            (clContext: ClContext)
+            (mul: Expr<'a option -> 'b option -> 'c option>)
+            workGroupSize
+            =
+
+            let multiply =
+                <@ fun (ndRange: Range1D) resultLength (vectorIndices: ClArray<int>) (vectorValues: ClArray<'b>) (vectorMask: ClArray<'d option>) (matrixRowPointers: ClArray<int>) (matrixColumns: ClArray<int>) (matrixValues: ClArray<'a>) (resultOffset: ClCell<int>) (resultIndices: ClArray<int>) (resultValues: ClArray<'c option>) ->
+                    let gid = ndRange.GlobalID0
+                    let step = ndRange.GlobalWorkSize
+
+                    let mutable i = gid
+
+                    while i < resultLength do
+                        let vectorIndex = vectorIndices.[i]
+                        let vectorValue = vectorValues.[i]
+
+                        let rowStart = matrixRowPointers.[vectorIndex]
+                        let rowEnd = matrixRowPointers.[vectorIndex + 1]
+
+                        let mutable count = 0
+
+                        for i in rowStart .. rowEnd - 1 do
+                            match vectorMask.[matrixColumns.[i]] with
+                            | None -> count <- count + 1
+                            | Some _ -> ()
+
+                        let mutable offset = atomic (+) resultOffset.Value count
+
+                        for i in rowStart .. rowEnd - 1 do
+                            let columnIndex = matrixColumns.[i]
+
+                            // TODO: Pass mask operation
+                            match vectorMask.[columnIndex] with
+                            | None ->
+                                resultIndices.[offset] <- columnIndex
+                                resultValues.[offset] <- (%mul) (Some matrixValues.[i]) (Some vectorValue)
+                                offset <- offset + 1
+                            | Some _ -> ()
+
+                        i <- i + step @>
+
+            let kernel = clContext.Compile multiply
+
+            fun (queue: RawCommandQueue) (matrix: ClMatrix.CSR<'a>) (vector: ClVector.Sparse<'b>) (vectorMask: ClArray<'d option>) (resultSize: int) ->
+
+                let multipliedIndices =
+                    clContext.CreateClArrayWithSpecificAllocationMode<int>(DeviceOnly, resultSize)
+
+                let multipliedValues =
+                    clContext.CreateClArrayWithSpecificAllocationMode<'c option>(DeviceOnly, resultSize)
+
+                let offset = clContext.CreateClCell 0
+
+                let numberOfGroups =
+                    Utils.divUpClamp vector.NNZ workGroupSize 1 1024
+
+                let ndRange =
+                    Range1D.CreateValid(numberOfGroups * workGroupSize, workGroupSize)
+
+                let kernel = kernel.GetKernel()
+
+                kernel.KernelFunc
+                    ndRange
+                    vector.NNZ
+                    vector.Indices
+                    vector.Values
+                    vectorMask
+                    matrix.RowPointers
+                    matrix.Columns
+                    matrix.Values
+                    offset
+                    multipliedIndices
+                    multipliedValues
+
+                queue.RunKernel kernel
+
+                offset.Free()
+
+                multipliedIndices, multipliedValues
+
+        let runMasked
+            (add: Expr<'c option -> 'c option -> 'c option>)
+            (mul: Expr<'a option -> 'b option -> 'c option>)
+            (clContext: ClContext)
+            workGroupSize
+            =
+
+            let count = count clContext workGroupSize
+
+            let multiplyValues =
+                multiplyValues clContext mul workGroupSize
+
+            let sort =
+                Sort.Bitonic.sortKeyValuesInplace clContext workGroupSize
+
+            let segReduce =
+                Reduce.ByKey.Option.segmentSequential add clContext workGroupSize
+
+            fun (queue: RawCommandQueue) (matrix: ClMatrix.CSR<'a>) (vector: ClVector.Sparse<'b>) (mask: ClArray<'d option>) ->
+
+                match count queue matrix vector mask with
+                | 0 -> None
+                | resultSize ->
+                    let multipliedIndices, multipliedValues =
+                        multiplyValues queue matrix vector mask resultSize
+
+                    sort queue multipliedIndices multipliedValues
+
+                    let result =
+                        segReduce queue DeviceOnly multipliedIndices multipliedValues
+                        |> Option.map
+                            (fun (reducedValues, reducedKeys) ->
+                                { Context = clContext
+                                  Indices = reducedKeys
+                                  Values = reducedValues
+                                  Size = matrix.ColumnCount })
+
+                    multipliedIndices.Free()
+                    multipliedValues.Free()
+
+                    result
+
+        let runMaskedBoolStandard
+            (add: Expr<'c option -> 'c option -> 'c option>)
+            (mul: Expr<'a option -> 'b option -> 'c option>)
+            (clContext: ClContext)
+            workGroupSize
+            =
+
+            let count = count clContext workGroupSize
+
+            let multiplyValues =
+                multiplyValues clContext mul workGroupSize
+
+            let sort =
+                Sort.Bitonic.sortKeyValuesInplace clContext workGroupSize
+
+            let removeDuplicates =
+                GraphBLAS.FSharp.ClArray.removeDuplications clContext workGroupSize
+
+            let create =
+                GraphBLAS.FSharp.ClArray.create clContext workGroupSize
+
+            fun (queue: RawCommandQueue) (matrix: ClMatrix.CSR<'a>) (vector: ClVector.Sparse<'b>) (mask: ClArray<'d option>) ->
+
+                match count queue matrix vector mask with
+                | 0 -> None
+                | resultSize ->
+                    let multipliedIndices, multipliedValues =
+                        multiplyValues queue matrix vector mask resultSize
+
+                    sort queue multipliedIndices multipliedValues
+
+                    let resultIndices = removeDuplicates queue multipliedIndices
+
+                    multipliedIndices.Free()
+                    multipliedValues.Free()
+
+                    Some
+                    <| { Context = clContext
+                         Indices = resultIndices
+                         Values = create queue DeviceOnly resultIndices.Length true
+                         Size = matrix.ColumnCount }

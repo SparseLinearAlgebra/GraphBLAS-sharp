@@ -140,8 +140,8 @@ module Vector =
 
             valueCell.Free()
 
+    // TODO: toSparseUnsorted + bitonic probably would work faster
     let toSparse<'a when 'a: struct> (clContext: ClContext) workGroupSize =
-
         let scatterValues =
             Common.Scatter.lastOccurrence clContext workGroupSize
 
@@ -196,7 +196,7 @@ module Vector =
               Values = resultValues
               Size = vector.Length }
 
-    let toSparse2<'a when 'a: struct> (clContext: ClContext) workGroupSize =
+    let toSparseUnsorted<'a when 'a: struct> (clContext: ClContext) workGroupSize =
 
         let kernel =
             <@ fun (ndRange: Range1D) (inputLength: int) (inputValues: ClArray<'a option>) (resultSize: ClCell<int>) (resultIndices: ClArray<int>) (resultValues: ClArray<'a>) ->

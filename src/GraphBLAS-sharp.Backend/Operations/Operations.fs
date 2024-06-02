@@ -331,7 +331,7 @@ module Operations =
             | _ -> failwith "Not implemented yet"
 
     /// <summary>
-    /// CSR Matrix - sparse vector multiplication. Optimized for bool OR and AND operations.
+    /// CSR Matrix - sparse vector multiplication. Optimized for bool OR and AND operations by skipping reduction stage.
     /// </summary>
     /// <param name="add">Type of binary function to reduce entries.</param>
     /// <param name="mul">Type of binary function to combine entries.</param>
@@ -350,6 +350,50 @@ module Operations =
         fun (queue: RawCommandQueue) (matrix: ClMatrix<bool>) (vector: ClVector<bool>) ->
             match matrix, vector with
             | ClMatrix.CSR m, ClVector.Sparse v -> Option.map ClVector.Sparse (run queue m v)
+            | _ -> failwith "Not implemented yet"
+
+    /// <summary>
+    /// CSR Matrix - sparse vector multiplication with mask. Mask is complemented.
+    /// </summary>
+    /// <param name="add">Type of binary function to reduce entries.</param>
+    /// <param name="mul">Type of binary function to combine entries.</param>
+    /// <param name="clContext">OpenCL context.</param>
+    /// <param name="workGroupSize">Should be a power of 2 and greater than 1.</param>
+    let SpMSpVMasked
+        (add: Expr<'c option -> 'c option -> 'c option>)
+        (mul: Expr<'a option -> 'b option -> 'c option>)
+        (clContext: ClContext)
+        workGroupSize
+        =
+
+        let run =
+            SpMSpV.Masked.runMasked add mul clContext workGroupSize
+
+        fun (queue: RawCommandQueue) (matrix: ClMatrix<'a>) (vector: ClVector<'b>) (mask: ClVector<'d>) ->
+            match matrix, vector, mask with
+            | ClMatrix.CSR m, ClVector.Sparse v, ClVector.Dense mask -> Option.map ClVector.Sparse (run queue m v mask)
+            | _ -> failwith "Not implemented yet"
+
+    /// <summary>
+    /// CSR Matrix - sparse vector multiplication with mask. Mask is complemented. Optimized for bool OR and AND operations by skipping reduction stage.
+    /// </summary>
+    /// <param name="add">Type of binary function to reduce entries.</param>
+    /// <param name="mul">Type of binary function to combine entries.</param>
+    /// <param name="clContext">OpenCL context.</param>
+    /// <param name="workGroupSize">Should be a power of 2 and greater than 1.</param>
+    let SpMSpVMaskedBool
+        (add: Expr<bool option -> bool option -> bool option>)
+        (mul: Expr<bool option -> bool option -> bool option>)
+        (clContext: ClContext)
+        workGroupSize
+        =
+
+        let run =
+            SpMSpV.Masked.runMaskedBoolStandard add mul clContext workGroupSize
+
+        fun (queue: RawCommandQueue) (matrix: ClMatrix<'a>) (vector: ClVector<'b>) (mask: ClVector<'d>) ->
+            match matrix, vector, mask with
+            | ClMatrix.CSR m, ClVector.Sparse v, ClVector.Dense mask -> Option.map ClVector.Sparse (run queue m v mask)
             | _ -> failwith "Not implemented yet"
 
     /// <summary>

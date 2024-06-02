@@ -22,6 +22,7 @@ let wgSize = Constants.Common.defaultWorkGroupSize
 let makeTest
     formatFrom
     (convertFun: RawCommandQueue -> AllocationFlag -> ClVector<'a> -> ClVector<'a>)
+    (convertFunUnsorted: option<RawCommandQueue -> AllocationFlag -> ClVector<'a> -> ClVector<'a>>)
     isZero
     case
     (array: 'a [])
@@ -37,7 +38,7 @@ let makeTest
 
         let actual =
             let clVector = vector.ToDevice context
-            let convertedVector = convertFun q HostInterop clVector
+            let convertedVector = convertFun q DeviceOnly clVector
 
             let res = convertedVector.ToHost q
 
@@ -56,6 +57,27 @@ let makeTest
 
         Expect.equal actual expected "Vectors must be the same"
 
+        match convertFunUnsorted with
+        | None -> ()
+        | Some convertFunUnsorted ->
+            let clVector = vector.ToDevice context
+            let convertedVector = convertFunUnsorted q DeviceOnly clVector
+
+            let res = convertedVector.ToHost q
+
+            match res, expected with
+            | Vector.Sparse res, Vector.Sparse expected ->
+                let iv = Array.zip res.Indices res.Values
+                let resSorted = Array.sortBy (fun (i, v) -> i) iv
+                let indices, values = Array.unzip resSorted
+                Expect.equal indices expected.Indices "Indices must be the same"
+                Expect.equal values expected.Values "Values must be the same"
+                Expect.equal res.Size expected.Size "Size must be the same"
+            | _ -> ()
+
+            clVector.Dispose()
+            convertedVector.Dispose()
+
 let testFixtures case =
     let getCorrectnessTestName datatype formatFrom =
         sprintf $"Correctness on %s{datatype}, %A{formatFrom} -> %A{case.Format}"
@@ -68,19 +90,21 @@ let testFixtures case =
     match case.Format with
     | Sparse ->
         [ let convertFun = Vector.toSparse context wgSize
+          let convertFunUnsorted = Vector.toSparseUnsorted context wgSize
 
           Utils.listOfUnionCases<VectorFormat>
           |> List.map
               (fun formatFrom ->
-                  makeTest formatFrom convertFun ((=) 0) case
+                  makeTest formatFrom convertFun (Some convertFunUnsorted) ((=) 0) case
                   |> testPropertyWithConfig config (getCorrectnessTestName "int" formatFrom))
 
           let convertFun = Vector.toSparse context wgSize
+          let convertFunUnsorted = Vector.toSparseUnsorted context wgSize
 
           Utils.listOfUnionCases<VectorFormat>
           |> List.map
               (fun formatFrom ->
-                  makeTest formatFrom convertFun ((=) false) case
+                  makeTest formatFrom convertFun (Some convertFunUnsorted) ((=) false) case
                   |> testPropertyWithConfig config (getCorrectnessTestName "bool" formatFrom)) ]
         |> List.concat
     | Dense ->
@@ -89,7 +113,7 @@ let testFixtures case =
           Utils.listOfUnionCases<VectorFormat>
           |> List.map
               (fun formatFrom ->
-                  makeTest formatFrom convertFun ((=) 0) case
+                  makeTest formatFrom convertFun None ((=) 0) case
                   |> testPropertyWithConfig config (getCorrectnessTestName "int" formatFrom))
 
           let convertFun = Vector.toDense context wgSize
@@ -97,7 +121,7 @@ let testFixtures case =
           Utils.listOfUnionCases<VectorFormat>
           |> List.map
               (fun formatFrom ->
-                  makeTest formatFrom convertFun ((=) false) case
+                  makeTest formatFrom convertFun None ((=) false) case
                   |> testPropertyWithConfig config (getCorrectnessTestName "bool" formatFrom)) ]
         |> List.concat
 

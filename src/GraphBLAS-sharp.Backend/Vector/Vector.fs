@@ -130,6 +130,26 @@ module Vector =
             | ClVector.Sparse _ -> copy processor allocationMode vector
 
     /// <summary>
+    /// Sparsifies the given vector if it is in a dense format.
+    /// If the given vector is already sparse, copies it.
+    /// Works faster than regular version, but indices of the sparse vector are unsorted.
+    /// </summary>
+    /// <param name="clContext">OpenCL context.</param>
+    /// <param name="workGroupSize">Should be a power of 2 and greater than 1.</param>
+    let toSparseUnsorted (clContext: ClContext) workGroupSize =
+        let toSparse =
+            Dense.Vector.toSparseUnsorted clContext workGroupSize
+
+        let copy = copy clContext workGroupSize
+
+        fun (processor: RawCommandQueue) allocationMode (vector: ClVector<'a>) ->
+            match vector with
+            | ClVector.Dense vector ->
+                ClVector.Sparse
+                <| toSparse processor allocationMode vector
+            | ClVector.Sparse _ -> copy processor allocationMode vector
+
+    /// <summary>
     /// Densifies the given vector if it is in a sparse format.
     /// If the given vector is already dense, copies it.
     /// </summary>

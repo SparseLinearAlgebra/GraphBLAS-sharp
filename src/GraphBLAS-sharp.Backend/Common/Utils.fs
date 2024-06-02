@@ -19,6 +19,10 @@ module internal Utils =
         >> fun x -> x ||| (x >>> 16)
         >> fun x -> x + 1
 
+    let divUp x y = x / y + (if x % y = 0 then 0 else 1)
+
+    let divUpClamp x y left right = min (max (divUp x y) left) right
+
     let floorToMultiple multiple x = x / multiple * multiple
 
     let ceilToMultiple multiple x = ((x - 1) / multiple + 1) * multiple

@@ -362,7 +362,7 @@ module ClArray =
 
                 let gid = ndRange.GlobalID0
 
-                if gid < length then
+                if gid < length && not result.Value then
                     let isExist = (%predicate) vector.[gid]
 
                     if isExist then result.Value <- true @>
@@ -902,22 +902,40 @@ module ClArray =
 
     let count<'a> (predicate: Expr<'a -> bool>) (clContext: ClContext) workGroupSize =
 
-        let sum =
-            Reduce.reduce <@ (+) @> clContext workGroupSize
+        let count =
+            <@ fun (ndRange: Range1D) (length: int) (array: ClArray<'a>) (count: ClCell<int>) ->
+                let gid = ndRange.GlobalID0
+                let mutable countLocal = 0
+                let step = ndRange.GlobalWorkSize
 
-        let getBitmap =
-            Map.map<'a, int> (Map.predicateBitmap predicate) clContext workGroupSize
+                let mutable i = gid
+
+                while i < length do
+                    let res = (%predicate) array.[i]
+                    if res then countLocal <- countLocal + 1
+                    i <- i + step
+
+                atomic (+) count.Value countLocal |> ignore @>
+
+        let count = clContext.Compile count
 
         fun (processor: RawCommandQueue) (array: ClArray<'a>) ->
 
-            let bitmap = getBitmap processor DeviceOnly array
+            let result = clContext.CreateClCell<int>(0)
 
-            let result =
-                (sum processor bitmap).ToHostAndFree processor
+            let numberOfGroups =
+                Utils.divUpClamp array.Length workGroupSize 1 1024
 
-            bitmap.Free()
+            let ndRange =
+                Range1D.CreateValid(workGroupSize * numberOfGroups, workGroupSize)
 
-            result
+            let kernel = count.GetKernel()
+
+            kernel.KernelFunc ndRange array.Length array result
+
+            processor.RunKernel kernel
+
+            result.ToHostAndFree processor
 
     /// <summary>
     /// Builds a new array whose elements are the results of applying the given function
