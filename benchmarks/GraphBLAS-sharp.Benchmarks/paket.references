@@ -1,5 +1,0 @@
-FSharp.Core
-
-BenchmarkDotNet
-MathNet.Numerics.FSharp
-MathNet.Numerics.MKL.Win-x64

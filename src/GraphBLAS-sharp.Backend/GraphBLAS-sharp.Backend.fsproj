@@ -72,5 +72,9 @@
     <Compile Include="Algorithms/PageRank.fs" />
     <Compile Include="Algorithms/Algorithms.fs" />
   </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+
+  <ItemGroup>
+    <PackageReference Include="Brahma.FSharp" Version="3.0.0-alpha1.5" />
+    <PackageReference Include="FSharp.Quotations.Evaluator" Version="2.1.0" />
+  </ItemGroup>
 </Project>

@@ -77,5 +77,13 @@
         <Content Include="Host/IO/Dataset/testMatrix.mtx" />
         <Compile Include="Program.fs" />
     </ItemGroup>
-    <Import Project="..\..\.paket\Paket.Restore.targets" />
+    <ItemGroup>
+      <PackageReference Include="Brahma.FSharp" Version="3.0.0-alpha1.5" />
+      <PackageReference Include="Expecto" Version="10.2.2" />
+      <PackageReference Include="Expecto.FsCheck" Version="10.2.2" />
+      <PackageReference Include="MathNet.Numerics.FSharp" Version="5.0.0" />
+      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+      <PackageReference Include="QuikGraph" Version="2.5.0" />
+      <PackageReference Include="TypeShape" Version="10.0.0" />
+    </ItemGroup>
 </Project>
