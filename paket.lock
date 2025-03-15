@@ -747,7 +747,7 @@ NUGET
       System.Xml.XmlDocument (>= 4.3) - restriction: && (< monoandroid) (< monotouch) (< net45) (>= netstandard1.3) (< win8) (< wpa81) (< xamarinios) (< xamarinmac) (< xamarintvos) (< xamarinwatchos)
     TypeShape (9.0)
       FSharp.Core (>= 4.3.2) - restriction: >= netstandard2.0
-    YC.OpenCL.NET (2.0.5) - restriction: >= net7.0
+    YC.OpenCL.NET (3.0.0-alpha1.5) - restriction: >= net7.0
       ExtraConstraints.Fody (1.14) - restriction: >= net7.0
       Microsoft.Build.Framework (16.10) - restriction: >= net7.0
       System.CodeDom (>= 7.0) - restriction: >= net7.0

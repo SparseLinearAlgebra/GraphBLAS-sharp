@@ -1,3 +1,3 @@
-AMD*
+NVIDIA*
 Gpu
 64

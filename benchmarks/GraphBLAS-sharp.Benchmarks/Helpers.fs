@@ -11,15 +11,20 @@ open System.Text.RegularExpressions
 open GraphBLAS.FSharp.Tests
 open FsCheck
 open Expecto
+open System.Runtime.CompilerServices
 
 module Utils =
     type BenchmarkContext =
         { ClContext: Brahma.FSharp.ClContext
           Queue: RawCommandQueue }
 
+    
+    let relativePath = System.Environment.GetEnvironmentVariable "BENCH_ROOT_PATH" // Path.Combine  [| whereAmI("") ;"""../../../"""|]
+    
+
     let getMatricesFilenames configFilename =
         let getFullPathToConfig filename =
-            Path.Combine [| __SOURCE_DIRECTORY__
+            Path.Combine [| relativePath
                             "Configs"
                             filename |]
             |> Path.GetFullPath
@@ -31,14 +36,14 @@ module Utils =
         |> Seq.filter (fun line -> not <| line.StartsWith "!")
 
     let getFullPathToMatrix datasetsFolder matrixFilename =
-        Path.Combine [| __SOURCE_DIRECTORY__
+        Path.Combine [| relativePath
                         "Datasets"
                         datasetsFolder
                         matrixFilename |]
 
     let availableContexts =
         let pathToConfig =
-            Path.Combine [| __SOURCE_DIRECTORY__
+            Path.Combine [| relativePath
                             "Configs"
                             "Context.txt" |]
             |> Path.GetFullPath

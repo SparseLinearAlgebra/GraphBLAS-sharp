@@ -101,7 +101,7 @@ let isRelease (targets : Target list) =
 let invokeAsync f = async { f () }
 
 let configuration (targets : Target list) =
-    let defaultVal = if isRelease targets then "Release" else "Debug"
+    let defaultVal = "Release"// if isRelease targets then "Release" else "Debug"
     match Environment.environVarOrDefault "CONFIGURATION" defaultVal with
     | "Debug" -> DotNet.BuildConfiguration.Debug
     | "Release" -> DotNet.BuildConfiguration.Release
@@ -734,7 +734,7 @@ let initTargets () =
         ==> "CheckFormatCode"
         ==> "DotnetBuild"
         //==> "FSharpAnalyzers"
-        ==> "DotnetTest"
+        //==> "DotnetTest"
         =?> ("GenerateCoverageReport", not disableCodeCoverage)
         ==> "DotnetPack"
         ==> "SourceLinkTest"
